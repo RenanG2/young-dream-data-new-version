@@ -1,0 +1,121 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum StatusPresenca {
+  PRESENTE
+  FALTA
+  JUSTIFICADA
+}
+
+enum MetodoPresenca {
+  FACIAL
+  MANUAL
+}
+
+model Professor {
+  id          Int      @id @default(autoincrement())
+  nome        String
+  email       String   @unique
+  senha       String
+  instituicao String
+  criadoEm    DateTime @default(now())
+
+  alunos   Aluno[]
+  turmas   Turma[]
+  chamadas Chamada[]
+  avisos   Aviso[]
+}
+
+model Turma {
+  id          Int      @id @default(autoincrement())
+  codigo      String
+  descricao   String?
+  professorId Int
+  criadaEm    DateTime @default(now())
+
+  professor Professor @relation(fields: [professorId], references: [id])
+  alunos    Aluno[]
+  chamadas  Chamada[]
+  avisos    Aviso[]
+
+  @@unique([professorId, codigo])
+}
+
+model Aluno {
+  id          Int    @id @default(autoincrement())
+  nome        String
+  idade       Int
+  professorId Int
+  turmaId     Int?
+
+  /// Coluna legada "turma" (texto livre). Substituída pela relação `turma`; pode ser removida numa migração futura.
+  turmaLegado String? @map("turma")
+
+  /// Descritor facial (128 números, em JSON).
+  faceData                 String?
+  /// Quando o responsável autorizou o uso da biometria facial (LGPD).
+  consentimentoBiometriaEm DateTime?
+  criadoEm                 DateTime  @default(now())
+
+  professor Professor    @relation(fields: [professorId], references: [id])
+  turma     Turma?       @relation(fields: [turmaId], references: [id], onDelete: Restrict)
+  presencas Presenca[]
+
+  @@index([professorId, turmaId])
+}
+
+model Chamada {
+  id          Int      @id @default(autoincrement())
+  /// Dia da aula (sem horário).
+  data        DateTime @db.Date
+  /// Nº da aula no dia (1ª, 2ª...).
+  aula        Int      @default(1)
+  turmaId     Int
+  professorId Int
+  criadaEm    DateTime @default(now())
+
+  turma     Turma      @relation(fields: [turmaId], references: [id])
+  professor Professor  @relation(fields: [professorId], references: [id])
+  presencas Presenca[]
+
+  @@unique([turmaId, data, aula])
+  @@index([professorId, data])
+}
+
+model Presenca {
+  id           Int            @id @default(autoincrement())
+  chamadaId    Int
+  alunoId      Int
+  status       StatusPresenca @default(PRESENTE)
+  metodo       MetodoPresenca @default(FACIAL)
+  registradaEm DateTime       @default(now())
+
+  chamada Chamada @relation(fields: [chamadaId], references: [id], onDelete: Cascade)
+  aluno   Aluno   @relation(fields: [alunoId], references: [id], onDelete: Cascade)
+
+  @@unique([chamadaId, alunoId])
+  @@index([alunoId])
+}
+
+model Aviso {
+  id            Int      @id @default(autoincrement())
+  titulo        String
+  corpo         String
+  fixado        Boolean  @default(false)
+  criadoEm      DateTime @default(now())
+  atualizadoEm  DateTime @updatedAt
+  professorId   Int
+  /// null = aviso geral (todas as turmas)
+  turmaId       Int?
+
+  professor Professor @relation(fields: [professorId], references: [id])
+  turma     Turma?    @relation(fields: [turmaId], references: [id], onDelete: Cascade)
+
+  @@index([professorId, criadoEm])
+}
